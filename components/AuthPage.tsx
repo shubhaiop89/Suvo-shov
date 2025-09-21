@@ -108,12 +108,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) =
     setLoading(true);
     setError(null);
     setMessage(null);
-    const result = await sendOtp(email);
-    if (result.success) {
-      setMessage(result.message || `We've sent a code to ${email}.`);
-      setView('otp');
-    } else {
-      setError(result.error || 'Failed to send code.');
+    try {
+      const result = await sendOtp(email);
+      if (result.success) {
+        setMessage(result.message || `We've sent a code to ${email}.`);
+        setView('otp');
+      } else {
+        // Show full error details if available
+        setError(result.error ? `OTP Error: ${result.error}` : 'Failed to send code.');
+      }
+    } catch (err: any) {
+      setError(`Network/API error: ${err?.message || err}`);
     }
     setLoading(false);
   };
