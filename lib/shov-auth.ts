@@ -1,37 +1,68 @@
 // Shov API client for login
 // This is a minimal wrapper for the SEND-OTP and VERIFY-OTP endpoints
+// Shov API configuration
+const SHOV_PROJECT = 'my-project'; // Replace with your actual project name
 
-const SHOV_API_URL = 'https://api.shov.com'; // Replace with actual API endpoint if different
-const SHOV_API_KEY = process.env.SHOV_API_KEY || '';
+const SHOV_API_URL = 'https://shov.com/api'; // Updated to correct API endpoint
+const SHOV_API_KEY = 'shov_live_19163b7b56c74e6891e13fde581613fc';
 
-export async function sendOtp(email: string): Promise<{ success: boolean; message?: string; error?: string }> {
-  const res = await fetch(`${SHOV_API_URL}/send-otp`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SHOV_API_KEY}`,
-    },
-    body: JSON.stringify({ identifier: email }),
-  });
-  const data = await res.json();
-  if (res.ok && data.success) {
-    return { success: true, message: data.message };
+
+export async function sendOtp(email: string): Promise<{ success: boolean; message?: string; error?: string; details?: any }> {
+  // Replace 'my-project' with your actual project name if needed
+  try {
+    const res = await fetch(`${SHOV_API_URL}/send-otp/${SHOV_PROJECT}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SHOV_API_KEY}`,
+      },
+      body: JSON.stringify({ identifier: email }),
+    });
+    let data;
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      data = { message: 'Invalid JSON response', raw: await res.text() };
+    }
+    if (res.ok && data.success) {
+      return { success: true, message: data.message };
+    }
+    return {
+      success: false,
+      error: `OTP Error: ${data.message || 'Failed to send OTP'} (HTTP ${res.status})`,
+      details: data
+    };
+  } catch (err: any) {
+    return { success: false, error: `Network/API error: ${err?.message || err}` };
   }
-  return { success: false, error: data.message || 'Failed to send OTP' };
 }
 
-export async function verifyOtp(email: string, pin: string): Promise<{ success: boolean; message?: string; error?: string }> {
-  const res = await fetch(`${SHOV_API_URL}/verify-otp`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${SHOV_API_KEY}`,
-    },
-    body: JSON.stringify({ identifier: email, pin }),
-  });
-  const data = await res.json();
-  if (res.ok && data.success) {
-    return { success: true, message: data.message };
+export async function verifyOtp(email: string, pin: string): Promise<{ success: boolean; message?: string; error?: string; details?: any }> {
+  // Replace 'my-project' with your actual project name if needed
+  try {
+    const res = await fetch(`${SHOV_API_URL}/verify-otp/${SHOV_PROJECT}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SHOV_API_KEY}`,
+      },
+      body: JSON.stringify({ identifier: email, pin }),
+    });
+    let data;
+    try {
+      data = await res.json();
+    } catch (jsonErr) {
+      data = { message: 'Invalid JSON response', raw: await res.text() };
+    }
+    if (res.ok && data.success) {
+      return { success: true, message: data.message };
+    }
+    return {
+      success: false,
+      error: `Verify OTP Error: ${data.message || 'Failed to verify OTP'} (HTTP ${res.status})`,
+      details: data
+    };
+  } catch (err: any) {
+    return { success: false, error: `Network/API error: ${err?.message || err}` };
   }
-  return { success: false, error: data.message || 'Failed to verify OTP' };
 }
