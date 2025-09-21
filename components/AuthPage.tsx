@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloseIcon, SpinnerIcon } from './icons';
-import { supabase } from '../lib/supabase';
+import { sendOtp, verifyOtp } from '../lib/shov-auth';
 import { useLocation } from 'react-router-dom';
 
 interface AuthPageProps {
   onClose: () => void;
+  onLoginSuccess?: () => void;
 }
 
 const AuthInput: React.FC<{ id: string, type: string, placeholder: string, value: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, disabled: boolean }> = ({ id, type, placeholder, value, onChange, disabled }) => (
@@ -83,7 +84,7 @@ const OtpInput: React.FC<{
 };
 
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onClose }) => {
+export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [view, setView] = useState<'email' | 'otp'>('email');
   const [email, setEmail] = useState('');
@@ -101,28 +102,23 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose }) => {
     setTimeout(onClose, 300);
   };
   
+  // Shov base login: Call Shov API to send OTP
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setMessage(null);
-    
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        shouldCreateUser: true,
-      }
-    });
-
-    if (authError) {
-        setError(authError.message);
+    const result = await sendOtp(email);
+    if (result.success) {
+      setMessage(result.message || `We've sent a code to ${email}.`);
+      setView('otp');
     } else {
-        setMessage(`We've sent a code to ${email}.`);
-        setView('otp');
+      setError(result.error || 'Failed to send code.');
     }
     setLoading(false);
   };
   
+  // Shov base login: Call Shov API to verify OTP
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -135,24 +131,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose }) => {
       setLoading(false);
       return;
     }
-
-    const { data, error: verifyError } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type: 'email'
-    });
-
-    if (verifyError) {
-      setError(verifyError.message);
-      setOtp(['', '', '', '']); // Clear OTP on error
-    } else if (data.session) {
+    const result = await verifyOtp(email, token);
+    if (result.success) {
       setMessage("Success! You're now logged in.");
       setTimeout(() => {
+        if (onLoginSuccess) onLoginSuccess();
         handleClose();
-        window.location.reload(); // Reload to reflect session change
+        // window.location.reload(); // Optionally reload if needed
       }, 1500);
     } else {
-      setError("An unknown error occurred during verification.");
+      setError(result.error || 'Failed to verify code.');
+      setOtp(['', '', '', '']);
     }
     setLoading(false);
   };

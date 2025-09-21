@@ -9,9 +9,20 @@ interface HomePageProps {
 
 export const HomePage: React.FC<HomePageProps> = ({ onLaunchWorkspace }) => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // Called after successful login
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+    setIsAuthOpen(false);
+  };
 
   const handleSendMessage = (prompt: string, image: File | null) => {
     const isInputProvided = prompt.trim() !== '' || image !== null;
+    if (!isLoggedIn) {
+      setIsAuthOpen(true);
+      return;
+    }
     onLaunchWorkspace(isInputProvided ? prompt : undefined);
   };
 
@@ -73,7 +84,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onLaunchWorkspace }) => {
             </footer>
         </div>
         
-        {isAuthOpen && <AuthPage onClose={() => setIsAuthOpen(false)} />}
+  {isAuthOpen && <AuthPage onClose={() => setIsAuthOpen(false)} onLoginSuccess={handleLoginSuccess} />}
     </div>
   );
 };

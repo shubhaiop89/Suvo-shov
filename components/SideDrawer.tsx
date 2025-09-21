@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { addProject, getProjectsByOwner, removeProject } from '../lib/shov-data';
 import { CloseIcon, TrashIcon, CreditCardIcon, SettingsIcon, HelpCircleIcon, SunIcon, MoonIcon, DesktopIcon } from './icons/index';
 import { AppTheme } from '../types';
 
@@ -43,32 +44,46 @@ export const SideDrawer: React.FC<SideDrawerProps> = ({
     theme,
     setTheme
 }) => {
-  // In a real app, projects would be fetched.
-  const [projects, setProjects] = useState<{ id: number; name: string }[]>([]);
+  // Projects are fetched from Shov
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const ownerId = 'current-user-id'; // TODO: Replace with actual logged-in user id
+
+  useEffect(() => {
+    async function fetchProjects() {
+      const res = await getProjectsByOwner(ownerId);
+      if (res.success && res.items) {
+        setProjects(res.items.map((p: any) => ({ id: p.id, name: p.value.name })));
+      }
+    }
+    fetchProjects();
+  }, [ownerId]);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
-  const [projectToDelete, setProjectToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const handleDeleteProject = (e: React.MouseEvent, project: { id: number; name: string }) => {
+  const handleDeleteProject = (e: React.MouseEvent, project: { id: string; name: string }) => {
     e.preventDefault();
     e.stopPropagation();
     setProjectToDelete(project);
     onClose();
   };
   
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!projectToDelete) return;
+    await removeProject(projectToDelete.id);
     setProjects(currentProjects => currentProjects.filter(p => p.id !== projectToDelete.id));
     setProjectToDelete(null);
   };
 
 
-  const handleConfirmCreate = () => {
+  const handleConfirmCreate = async () => {
     if (newProjectName.trim()) {
-        const newProject = { id: Date.now(), name: newProjectName.trim() };
-        setProjects(current => [newProject, ...current]);
-        setNewProjectName('');
-        setIsCreatingProject(false);
+      const res = await addProject({ ownerId, name: newProjectName.trim() });
+      if (res.success && res.id) {
+        setProjects(current => [{ id: res.id, name: newProjectName.trim() }, ...current]);
+      }
+      setNewProjectName('');
+      setIsCreatingProject(false);
     }
   };
 
