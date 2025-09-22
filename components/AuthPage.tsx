@@ -198,6 +198,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) =
                       <button type="submit" disabled={loading} className="w-full p-3 font-medium text-white dark:text-black bg-slate-900 dark:bg-white rounded-md hover:bg-slate-700 dark:hover:bg-zinc-200 transition-colors flex items-center justify-center disabled:opacity-60">
                           {loading ? <SpinnerIcon className="w-6 h-6 text-white dark:text-black" /> : "Continue with Email"}
                       </button>
+                      <button
+                        type="button"
+                        className="w-full p-3 font-medium text-slate-900 dark:text-white bg-purple-100 dark:bg-purple-900 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors flex items-center justify-center mt-2"
+                        onClick={() => {
+                          if (onLoginSuccess) onLoginSuccess();
+                          handleClose();
+                          // Optionally, you can navigate to the workshop route here if needed
+                        }}
+                      >
+                        Try Demo
+                      </button>
                   </form>
                 ) : (
                   <form onSubmit={handleOtpSubmit} className="space-y-6">
