@@ -1,10 +1,10 @@
 // Shov API client for login
 // This is a minimal wrapper for the SEND-OTP and VERIFY-OTP endpoints
 // Shov API configuration
-const SHOV_PROJECT = 'my-project'; // Replace with your actual project name
+const SHOV_PROJECT = 'brandy'; // Updated to new project name
 
-const SHOV_API_URL = 'https://shov.com/api'; // Updated to correct API endpoint
-const SHOV_API_KEY = 'shov_live_19163b7b56c74e6891e13fde581613fc';
+const SHOV_API_URL = 'https://shov.com/api'; // API endpoint remains the same
+const SHOV_API_KEY = 'shov_live_97a76bd6ae43423c81425ed50f6808b8'; // Updated to new API key
 
 
 export async function sendOtp(email: string): Promise<{ success: boolean; message?: string; error?: string; details?: any }> {
