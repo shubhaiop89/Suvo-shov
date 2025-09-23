@@ -1,10 +1,9 @@
 "use client"
 
-import React, { useEffect } from "react"
+import type React from "react"
 
 import { useState, useCallback, useRef } from "react"
 import type { Message, AiStatus, FileSystem, FileChange, FileData } from "../types"
-import { addMessage, getMessagesByProject, addFile, getFilesByProject, addUser, getUserByEmail } from '../lib/shov-data';
 import { GoogleGenAI, type Content, type Part } from "@google/genai"
 
 const AI_SYSTEM_PROMPT = `You are "Suvo," an AI expert specializing in web development. Your main instruction is to use **HTML, CSS, and vanilla JavaScript** to build applications. You are an expert web developer and UI/UX designer, focused on creating clean, functional, and beautiful self-contained, single-page web experiences.
@@ -316,35 +315,10 @@ const finalParseCodeChanges = (fullResponseText: string): { changes: FileChange[
 }
 
 export const useChat = (
-  // Example: Add user and fetch user by email
-  // useEffect(() => {
-  //   async function manageUser() {
-  //     await addUser({ email: 'user@example.com', name: 'User' });
-  //     const res = await getUserByEmail('user@example.com');
-  //     // Do something with user data
-  //   }
-  //   manageUser();
-  // }, []);
   fileSystem: FileSystem,
   setFileSystem: React.Dispatch<React.SetStateAction<FileSystem>>,
 ) => {
-  const [files, setFiles] = useState<FileData[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const projectId = 'current-project-id'; // TODO: Replace with actual project id
-
-  useEffect(() => {
-    async function fetchFiles() {
-      const res = await getFilesByProject(projectId);
-      if (res.success && res.items) {
-        setFiles(res.items.map((f: any) => ({
-          content: f.value.content,
-          type: f.value.type,
-          isBinary: f.value.isBinary
-        })));
-      }
-    }
-    fetchFiles();
-  }, [projectId]);
+  const [messages, setMessages] = useState<Message[]>([])
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle")
   const stopGenerationRef = useRef(false)
   const lastUploadedImageRef = useRef<{ data: string; mimeType: string } | null>(null)
@@ -378,18 +352,149 @@ export const useChat = (
 
   const sendMessage = useCallback(
     async (prompt: string, image: File | null) => {
-      stopGenerationRef.current = false;
-      setAiStatus("thinking");
+      const apiKey = process.env.API_KEY
 
-      const userMessage: Message = { id: Date.now().toString(), role: "user", text: prompt, projectId };
-      await addMessage({ projectId, userId: 'current-user-id', role: 'user', text: prompt });
-      setMessages((prev) => [...prev, userMessage]);
-  setAiStatus("idle");
-  // Example: Add file to Shov when needed
-  // await addFile({ projectId, name: 'example.txt', type: 'txt', content: 'Hello Shov!' });
+      stopGenerationRef.current = false
+      setAiStatus("thinking")
+
+      const userMessage: Message = { id: Date.now().toString(), role: "user", text: prompt }
+      const messagesBeforeSend = [...messages]
+      const promptParts: Part[] = []
+
+      if (image) {
+        try {
+          userMessage.imageUrl = URL.createObjectURL(image)
+          const { data: base64Data, mimeType } = await convertImageToBase64(image)
+          lastUploadedImageRef.current = { data: base64Data, mimeType }
+
+          promptParts.push({
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data,
+            },
+          })
+        } catch (error) {
+          console.error("Error processing image upload:", error)
+          const errorMsg: Message = {
+            id: (Date.now() + 1).toString(),
+            role: "ai",
+            text: "Sorry, I failed to process the image you uploaded.",
+            error: error instanceof Error ? error.message : "Unknown error",
+          }
+          setMessages((prev) => [...prev, userMessage, errorMsg])
+          setAiStatus("idle")
+          if (userMessage.imageUrl) URL.revokeObjectURL(userMessage.imageUrl)
+          return
+        }
+      }
+
+      const fileContext = `\n\n--- CURRENT FILE SYSTEM ---\n${JSON.stringify(Object.keys(fileSystem), null, 2)}`
+      const textPromptContent = prompt + fileContext;
+      promptParts.unshift({ text: textPromptContent })
+
+      messagesBeforeSend.push(userMessage)
+      setMessages(messagesBeforeSend)
+
+      const aiMessageId = (Date.now() + 2).toString()
+      const aiMessagePlaceholder: Message = { id: aiMessageId, role: "ai", text: "", isStreaming: true }
+      setMessages((prev) => [...prev, aiMessagePlaceholder])
+      setAiStatus("streaming")
+
+      let fullResponseText = ""
+      const fileSystemSnapshot = JSON.parse(JSON.stringify(fileSystem));
+
+      try {
+        const ai = new GoogleGenAI({ apiKey })
+        const chatHistory = buildHistory(messagesBeforeSend)
+
+        const systemInstruction = AI_SYSTEM_PROMPT;
+
+        const chat = ai.chats.create({
+          model: "gemini-2.5-flash",
+          config: { systemInstruction },
+          history: chatHistory,
+        })
+
+        const stream = await chat.sendMessageStream({ message: promptParts })
+
+        for await (const chunk of stream) {
+          if (stopGenerationRef.current) break
+
+          fullResponseText += chunk.text
+
+          const conversationalPart = fullResponseText.split("[CODE_CHANGES]")[0]
+          const streamedChanges = parseStreamedCodeChanges(fullResponseText)
+
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMessageId
+                ? { ...m, text: conversationalPart, codeChanges: streamedChanges ?? m.codeChanges }
+                : m,
+            ),
+          )
+        }
+
+        if (stopGenerationRef.current) {
+          console.log("Generation stopped by user.")
+        }
+
+        const { changes: finalChanges, error: parseError } = finalParseCodeChanges(fullResponseText)
+
+        // The final changes are applied here. If streaming produced partial changes,
+        // this final application ensures the state is consistent with the full response.
+        if (finalChanges.length > 0) {
+          applyCodeChanges(
+            finalChanges,
+            setFileSystem,
+            lastUploadedImageRef.current,
+            clearLastUploadedImage,
+          )
+        }
+
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id === aiMessageId) {
+              let finalConversationalText = fullResponseText
+                .replace(/\[CODE_CHANGES\][\s\S]*?\[CODE_CHANGES_END\]/g, "")
+                .trim()
+              if (!finalConversationalText && finalChanges.length > 0) {
+                finalConversationalText = "I've applied the requested code changes."
+              }
+              return {
+                ...m,
+                text: finalConversationalText,
+                codeChanges: finalChanges.length > 0 ? finalChanges : m.codeChanges,
+                isStreaming: false,
+                error: parseError ?? m.error,
+                ...(finalChanges.length > 0 && { previousFileSystem: fileSystemSnapshot }),
+              }
+            }
+            return m
+          }),
+        )
+      } catch (error) {
+        console.error(`AI streaming error:`, error)
+
+        const detailedError = error instanceof Error ? error.message : String(error)
+        const errorMsg = isQuotaError(error)
+          ? "You have exceeded your API quota. Please check your plan and billing details."
+          : "An unexpected error occurred while processing your request."
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMessageId ? { ...m, isStreaming: false, text: errorMsg, error: detailedError } : m,
+          ),
+        )
+      } finally {
+        if (userMessage.imageUrl) {
+          URL.revokeObjectURL(userMessage.imageUrl)
+        }
+      }
+
+      setAiStatus("idle")
     },
-    [projectId],
-  );
+    [fileSystem, setFileSystem, messages, clearLastUploadedImage],
+  )
 
   return { messages, setMessages, sendMessage, aiStatus, stopGeneration }
 }

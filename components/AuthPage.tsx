@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CloseIcon, SpinnerIcon } from './icons';
-import { sendOtp, verifyOtp } from '../lib/shov-auth';
+import { supabase } from '../lib/supabase';
 import { useLocation } from 'react-router-dom';
 
 interface AuthPageProps {
   onClose: () => void;
-  onLoginSuccess?: () => void;
 }
 
 const AuthInput: React.FC<{ id: string, type: string, placeholder: string, value: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, disabled: boolean }> = ({ id, type, placeholder, value, onChange, disabled }) => (
@@ -84,7 +83,7 @@ const OtpInput: React.FC<{
 };
 
 
-export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) => {
+export const AuthPage: React.FC<AuthPageProps> = ({ onClose }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [view, setView] = useState<'email' | 'otp'>('email');
   const [email, setEmail] = useState('');
@@ -102,28 +101,28 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) =
     setTimeout(onClose, 300);
   };
   
-  // Shov base login: Call Shov API to send OTP
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setMessage(null);
-    try {
-      const result = await sendOtp(email);
-      if (result.success) {
-        setMessage(result.message || `We've sent a code to ${email}.`);
-        setView('otp');
-      } else {
-        // Show full error details if available
-        setError(result.error ? `OTP Error: ${result.error}` : 'Failed to send code.');
+    
+    const { error: authError } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        shouldCreateUser: true,
       }
-    } catch (err: any) {
-      setError(`Network/API error: ${err?.message || err}`);
+    });
+
+    if (authError) {
+        setError(authError.message);
+    } else {
+        setMessage(`We've sent a code to ${email}.`);
+        setView('otp');
     }
     setLoading(false);
   };
   
-  // Shov base login: Call Shov API to verify OTP
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -136,17 +135,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) =
       setLoading(false);
       return;
     }
-    const result = await verifyOtp(email, token);
-    if (result.success) {
+
+    const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: 'email'
+    });
+
+    if (verifyError) {
+      setError(verifyError.message);
+      setOtp(['', '', '', '']); // Clear OTP on error
+    } else if (data.session) {
       setMessage("Success! You're now logged in.");
       setTimeout(() => {
-        if (onLoginSuccess) onLoginSuccess();
         handleClose();
-        // window.location.reload(); // Optionally reload if needed
+        window.location.reload(); // Reload to reflect session change
       }, 1500);
     } else {
-      setError(result.error || 'Failed to verify code.');
-      setOtp(['', '', '', '']);
+      setError("An unknown error occurred during verification.");
     }
     setLoading(false);
   };
@@ -197,17 +203,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onClose, onLoginSuccess }) =
 
                       <button type="submit" disabled={loading} className="w-full p-3 font-medium text-white dark:text-black bg-slate-900 dark:bg-white rounded-md hover:bg-slate-700 dark:hover:bg-zinc-200 transition-colors flex items-center justify-center disabled:opacity-60">
                           {loading ? <SpinnerIcon className="w-6 h-6 text-white dark:text-black" /> : "Continue with Email"}
-                      </button>
-                      <button
-                        type="button"
-                        className="w-full p-3 font-medium text-slate-900 dark:text-white bg-purple-100 dark:bg-purple-900 rounded-md hover:bg-purple-200 dark:hover:bg-purple-800 transition-colors flex items-center justify-center mt-2"
-                        onClick={() => {
-                          if (onLoginSuccess) onLoginSuccess();
-                          handleClose();
-                          // Optionally, you can navigate to the workshop route here if needed
-                        }}
-                      >
-                        Try Demo
                       </button>
                   </form>
                 ) : (

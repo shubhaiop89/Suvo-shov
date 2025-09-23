@@ -11,8 +11,6 @@ export interface Message {
   id: string;
   role: MessageRole;
   text: string;
-  projectId?: string;
-  userId?: string;
   codeChanges?: FileChange[];
   version?: number;
   error?: string;
